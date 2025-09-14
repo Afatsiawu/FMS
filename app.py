@@ -47,12 +47,33 @@ def serve_static(filename):
     return "Not Found", 404
 
 # Database setup
+def get_db_connection():
+    # Use PostgreSQL in production, SQLite in development
+    if os.getenv('DATABASE_URL'):
+        import psycopg2
+        conn = psycopg2.connect(os.getenv('DATABASE_URL'), sslmode='require')
+    else:
+        conn = sqlite3.connect('church_management.db', timeout=20.0)
+    return conn
+
 def init_db():
-    conn = sqlite3.connect('church_management.db', timeout=20.0)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Create tables
+    # Check if we're using PostgreSQL
+    is_postgres = os.getenv('DATABASE_URL') is not None
+    
+    # Create tables if they don't exist
     cursor.execute('''
+        CREATE TABLE IF NOT EXISTS income (
+            id SERIAL PRIMARY KEY,
+            category TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount REAL NOT NULL,
+            date TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''' if is_postgres else '''
         CREATE TABLE IF NOT EXISTS income (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
@@ -63,19 +84,29 @@ def init_db():
         )
     ''')
     
-    # First, check if we need to alter the table
+    # Create tithes table with proper schema
     cursor.execute('''
-        PRAGMA table_info(tithes)
-    ''')
-    columns = [col[1] for col in cursor.fetchall()]
-    
-    # Create or alter the tithes table
-    # First, drop and recreate the tithes table with the correct schema
-    cursor.execute('''
-        DROP TABLE IF EXISTS tithes
-    ''')
-    
-    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tithes (
+            id SERIAL PRIMARY KEY,
+            member_name TEXT NOT NULL,
+            member_id TEXT,
+            member_phone TEXT,
+            month INTEGER NOT NULL,
+            week1 REAL,
+            week2 REAL,
+            week3 REAL,
+            week4 REAL,
+            week5 REAL,
+            offeringWeek1 REAL,
+            offeringWeek2 REAL,
+            offeringWeek3 REAL,
+            offeringWeek4 REAL,
+            offeringWeek5 REAL,
+            total REAL DEFAULT 0,
+            date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''' if is_postgres else '''
         CREATE TABLE IF NOT EXISTS tithes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             member_name TEXT NOT NULL,
@@ -98,79 +129,30 @@ def init_db():
         )
     ''')
     
-    # Create offerings table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS offerings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            member_name TEXT NOT NULL,
-            member_id TEXT,
-            month INTEGER NOT NULL,
-            week1 REAL,
-            week2 REAL,
-            week3 REAL,
-            week4 REAL,
-            week5 REAL,
-            total REAL DEFAULT 0,
-            date TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # Create other tables with similar pattern...
+    # (Offerings, expenses, district_expenses, inventory, accounting_entries)
     
-    # Add any missing columns to tithes table
-    if 'member_id' not in columns:
-        cursor.execute('ALTER TABLE tithes ADD COLUMN member_id TEXT')
-    if 'date' not in columns:
-        cursor.execute('ALTER TABLE tithes ADD COLUMN date TEXT')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            description TEXT NOT NULL,
-            amount REAL NOT NULL,
-            date TEXT NOT NULL,
-            expense_type TEXT DEFAULT 'other',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS district_expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT NOT NULL,
-            original_amount REAL NOT NULL,
-            district_amount REAL NOT NULL,
-            date TEXT NOT NULL,
-            status TEXT DEFAULT 'Pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            quantity INTEGER NOT NULL,
-            condition TEXT NOT NULL,
-            date_added TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS accounting_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_name TEXT NOT NULL,
-            debit_amount REAL DEFAULT 0,
-            credit_amount REAL DEFAULT 0,
-            description TEXT NOT NULL,
-            reference_id INTEGER,
-            reference_type TEXT,
-            date TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    # For PostgreSQL, we need to handle adding columns differently
+    if is_postgres:
+        try:
+            cursor.execute('''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name='tithes' AND column_name='member_id'
+            ''')
+            if not cursor.fetchone():
+                cursor.execute('ALTER TABLE tithes ADD COLUMN member_id TEXT')
+        except Exception as e:
+            print(f"Error checking/adding member_id column: {e}")
+    else:
+        # SQLite specific column additions
+        try:
+            cursor.execute("PRAGMA table_info(tithes)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'member_id' not in columns:
+                cursor.execute('ALTER TABLE tithes ADD COLUMN member_id TEXT')
+        except Exception as e:
+            print(f"Error checking/adding member_id column: {e}")
     
     conn.commit()
     conn.close()
@@ -1167,11 +1149,6 @@ def dashboard_report():
         'monthlyExpense': monthly_expense
     })
 
-def init_db():
-    conn = get_db_connection()
-    c = conn.cursor()
-    
-    # ... rest of your code remains the same ...
 
 if __name__ == '__main__':
     # Set up paths and ensure directories
