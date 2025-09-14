@@ -1162,7 +1162,9 @@ def dashboard_report():
     return jsonify({
         'todayIncome': today_income,
         'todayExpense': today_expense,
-        'netBalance': today_income - today_expense
+        'netBalance': today_income - today_expense,
+        'monthlyIncome': monthly_income,
+        'monthlyExpense': monthly_expense
     })
 
 def init_db():
