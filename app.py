@@ -360,7 +360,7 @@ def delete_inventory(item_id):
 def handle_income():
     conn = None
     try:
-        conn = sqlite3.connect('church_management.db', timeout=20.0)
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row  # Enable column access by name
         cursor = conn.cursor()
         
@@ -1162,10 +1162,8 @@ def dashboard_report():
     return jsonify({
         'todayIncome': today_income,
         'todayExpense': today_expense,
-        'netBalance': today_income - today_expense,
-    else:
-        conn = sqlite3.connect('church_management.db', timeout=20.0)
-    return conn
+        'netBalance': today_income - today_expense
+    })
 
 def init_db():
     conn = get_db_connection()
